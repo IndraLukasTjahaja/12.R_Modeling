@@ -1,0 +1,809 @@
+---
+title: "R Markdown Modeling Template - German Credit Dataset"
+author: "Indra Lukas Tjahaja"
+date: "June 13, 2018"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/Users/indralukastjahaja/OneDrive/09 Shared Folder/Data Science di Industri Keuangan")
+# /Users/indralukastjahaja/OneDrive/09 Shared Folder/Data Science di Industri Keuangan
+# D:/Dropbox/IYKRA - Capstone Project/BCA/3. R Documentation
+```
+
+# Supervised Learning - Classification - Factors affecting to Response
+
+## Background and Objective
+
+Write Explanation here
+
+## Results: Analysis and Insights
+
+Write Explanation here
+
+### Challenges and Conclusion
+
+Write Explanation here
+
+## Data Science Process, based on CRISP-DM 
+
+### 0. Preparation
+```{r preparation}
+setwd("/Users/indralukastjahaja/OneDrive/09 Shared Folder/Data Science di Industri Keuangan")
+# /Users/indralukastjahaja/OneDrive/09 Shared Folder/Data Science di Industri Keuangan
+# D:/Dropbox/IYKRA - Capstone Project/BCA/3. R Documentation
+```
+#### 0.1 Loading required libraries
+
+As part of the analysis, this exercise utilizes several libraries 
+
+```{r load_libraries, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+library(tidyverse)   # For data preparation / wrangling
+library(readxl)      # Read xl files
+library(scorecard)   # Credit Score Libraries
+library(rattle)      # Load rattle library for GUI Data Mining
+library(psych)       # for data set statistics report
+library(woe)         # Analyze WoE patterns and Information Value for whole modeling dataset
+library(riv)         # Another WOE and Information Value package
+library(Information) # Another WOE and Information Value package
+library(ROSE)        # Undersampling / Oversampling
+library(caTools)     # Stratified Sampling
+
+library(DT)          # For Data Tables
+library(ggplot2)     # An Implementation of the Grammar of Graphics 
+library(ROCR)        # Model Performance and ROC curve
+library(lubridate)   # date related manipulation
+library(params)
+
+library(readxl)      # Read xl files
+library(tidyverse)   # For data preparation / wrangling
+library(psych)       # for data set statistics report
+library(params)      # data manipulation
+library(Information) # Another WOE and Information Value package
+library(scorecard)   # Credit Score Libraries
+library(corrplot)    # to see correlation among variables
+library(ggcorrplot)  # another correlation plot
+library(lattice)
+library(randomForest)# variable importance and random forest
+library(caret)       # library for machine learning
+library(mRMRe)       # ensemble feature selection
+library(ROSE)        # undersampling/oversampling method
+library(rpart.plot)  # rpart plot
+library(rpart)
+library(dplyr)
+library(FSA)
+library(InformationValue)
+library(e1071)
+library(Hmisc)
+#library(papeR)
+library(pastecs)
+library(lubridate)
+library(mlbench)
+library(xgboost)
+```
+
+#### 0.2 Reading file
+
+Download the German data set from the following link <ftp://ftp.ics.uci.edu/pub/machine-learning-databases/statlog/>. Since the original data is in numeric. Please load the data given to you in the folder 
+
+```{r open file, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+# Load data from excel file
+df_credit <- read_excel("german_credit_easy.xls")
+
+```
+
+### 0.3 Initial Data Cleaning
+
+```{r initial data cleaning, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+
+```
+
+
+### 0.4 Combining Data and cleaning
+
+```{r combining data, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+
+
+```
+
+
+#### 0.5 User Defined Functions
+
+On this part, I used several Custom Statistical / Mathematic model functions that is not available in any libraries
+
+```{r user defined functions, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+# Function 1: Create function to calculate percent distribution for factors
+pct <- function(x){
+  tbl <- table(x)
+  tbl_pct <- cbind(tbl,round(prop.table(tbl)*100,2))
+  colnames(tbl_pct) <- c('Count','Percentage')
+  kable(tbl_pct)
+}
+# Function 2: Own function to calculate IV, WOE and Eefficiency 
+gbpct <- function(x, y){
+  mt <- as.matrix(table(as.factor(x), as.factor(y))) # x -> independent variable(vector), y->dependent variable(vector)
+  Total <- mt[,1] + mt[,2]                          # Total observations
+  Total_Pct <- round(Total/sum(mt)*100, 2)          # Total PCT
+  Bad_pct <- round((mt[,1]/sum(mt[,1]))*100, 2)     # PCT of BAd or event or response
+  Good_pct <- round((mt[,2]/sum(mt[,2]))*100, 2)   # PCT of Good or non-event
+  Bad_Rate <- round((mt[,1]/(mt[,1]+mt[,2]))*100, 2) # Bad rate or response rate
+  grp_score <- round((Good_pct/(Good_pct + Bad_pct))*10, 2) # score for each group
+  WOE <- round(log(Good_pct/Bad_pct)*10, 2)      # Weight of Evidence for each group
+  g_b_comp <- ifelse(mt[,1] == mt[,2], 0, 1)
+  IV <- ifelse(g_b_comp == 0, 0, (Good_pct - Bad_pct)*(WOE/10)) # Information value for each group
+  Efficiency <- abs(Good_pct - Bad_pct)/2                       # Efficiency for each group
+  otb<-as.data.frame(cbind(mt, Good_pct,  Bad_pct,  Total, 
+                           Total_Pct,  Bad_Rate, grp_score, 
+                           WOE, IV, Efficiency ))
+  otb$Names <- rownames(otb)
+  rownames(otb) <- NULL
+  otb[,c(12,2,1,3:11)] # return IV table
+}
+# Function 3: Normalize using Range
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+# Function 4: Overview Visualization for Categorical Variable, with Target Variable
+target_categorical <- function(x, y){
+  # print summary of variables
+  print(pct(x))
+  print(gbpct(x,y))
+  cross<-table(y, x)
+  addmargins(cross)
+  round(prop.table(cross,2)*100,digits=2)
+  par(mfrow=c(1, 2), oma=c(0,0,3,0))
+  # Frequency
+  barplot(cross, ylab='Frequency',main="Frequency against Target",col=c("darkblue","red"),legend=rownames(cross), las=2, cex.names=0.6, args.legend = list(x = "topleft"))
+  # Proportion
+  barplot(prop.table(cross,2), ylab='Proportion',main="Proportion against Target",col=c("darkblue","red"),legend=rownames(cross), las=2, cex.names=0.6, args.legend = list(x = "bottomleft"))
+}
+# Function 4: Overview Visualization for Numerical Variable, with Target Variable
+target_numerical <- function(x, y){
+  boxplot(x~y,col=topo.colors(3))
+}
+outlierKD <- function(dt, var, tar) {
+  var_name <- eval(substitute(var),eval(dt))
+  tar_name <- eval(substitute(tar),eval(dt))
+  
+  tot <- sum(!is.na(var_name))
+  na1 <- sum(is.na(var_name))
+  m1 <- mean(var_name, na.rm = T)
+  par(mfrow=c(2, 2), oma=c(0,0,3,0))
+
+  show(('Descriptive Statistics of Variable With Outliers'))
+  show(stat.desc(var_name))
+  show((''))
+
+
+  boxplot(var_name ~ tar_name, main="With outliers")
+  hist(var_name, main="With outliers", xlab=NA, ylab=NA)
+  outlier <- boxplot.stats(var_name)$out
+  mo <- mean(outlier)
+  var_name <- ifelse(var_name %in% outlier, NA, var_name)
+
+
+  
+  #boxplot(var_name, main="Without outliers")
+  boxplot(var_name ~ tar_name, main="Without outliers")
+  hist(var_name, main="Without outliers", xlab=NA, ylab=NA)
+  title("Outlier Check", outer=TRUE)
+  na2 <- sum(is.na(var_name))
+  m2 <- mean(var_name, na.rm = T)
+  show(('Descriptive Statistics of Variable Without Outliers'))
+  show(stat.desc(var_name))
+  show((''))
+}
+hist_outlier <- function(dt, var, tar) {
+  var_name <- eval(substitute(var),eval(dt))
+  tar_name <- eval(substitute(tar),eval(dt))
+  pw <- histogram(~ var_name | tar_name, data = dt, main="with outliers")
+  outlier <- boxplot.stats(var_name)$out
+  var_name <- ifelse(var_name %in% outlier, NA, var_name)
+  histogram(~ var_name | tar_name, data = dt, main="without outliers")
+  # Plot prints
+  #print(pw, split = c(1, 3, 3, 3), more = TRUE)
+  #print(px, split = c(2, 3, 3, 3), more = TRUE)temp <- df3
+  
+  #hist(~var_name,data=dt)
+}
+
+distribution_stats <- function(dt, var, tar) {
+
+  var_name <- eval(substitute(var),eval(dt))
+  tar_name <- eval(substitute(tar),eval(dt))
+  
+  res1 <- filter(dt, tar_name == 1)
+  res0 <- filter(dt, tar_name == 0)
+
+  var_name1 <- eval(substitute(var),eval(res1))
+  var_name0 <- eval(substitute(var),eval(res0))
+  
+  show(('Descriptive Statistics of Variable of Responsder: TARGET = 1'))
+  show(stat.desc(var_name1))
+  show((''))
+  show(('Descriptive Statistics of Variable of Responsder: TARGET = 0'))
+  show(stat.desc(var_name0))
+  show((''))
+  
+  # Assuming normal distribution # Do they come from the same distribution?
+  show(('Assume Normal Distribution: Hypothesis Testing'))
+  print(t.test(var_name0,var_name1))
+  # Assuming non-normal distribution 
+  show((''))
+  show(('Assume Non-Normal Distribution: Hypothesis Testing'))
+  print(ks.test(var_name0,var_name1)) # different distribution
+  show((''))
+}
+
+response_table <- function(dt, var, tar) {
+  show(('Response table'))
+  var_name <- eval(substitute(var),eval(dt))
+  tar_name <- eval(substitute(tar),eval(dt))
+  cross<-table(tar_name, var_name)
+  addmargins(cross)
+  print(cross)
+  print(round(prop.table(cross,2)*100,digits=2))
+  show((''))
+}
+  
+Mode <- function(x, na.rm = FALSE) {
+  if(na.rm){
+    x = x[!is.na(x)]
+  }
+
+  ux <- unique(x)
+  return(ux[which.max(tabulate(match(x, ux)))])
+}
+age_calc <- function(dob, enddate=Sys.Date(), units='months'){
+  if (!inherits(dob, "Date") | !inherits(enddate, "Date"))
+    stop("Both dob and enddate must be Date class objects")
+  start <- as.POSIXlt(dob)
+  end <- as.POSIXlt(enddate)
+
+  years <- end$year - start$year
+  if(units=='years'){
+    result <- ifelse((end$mon < start$mon) | 
+                      ((end$mon == start$mon) & (end$mday < start$mday)),
+                      years - 1, years)    
+  }else if(units=='months'){
+    months <- (years-1) * 12
+    result <- months + start$mon
+  }else if(units=='days'){
+    result <- difftime(end, start, units='days')
+  }else{
+    stop("Unrecognized units. Please choose years, months, or days.")
+  }
+  return(result)
+}
+```
+
+### 1. Business understanding
+
+#### 1.1 Background
+Write Explanation: Current Process, etc
+
+#### 1.2 Objective
+Write Explanation
+
+#### 1.3 Success Measurement
+Write Explanation
+
+### 2. Data understanding / Exploration / Visualization
+
+#### 2.1 Data Summary
+Sanity check on the data. To confirm whether the data loaded correctly to R and whether the data has any missing values. Remove unnecessary variables
+```{r summary, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+temp <- df_credit %>%
+  dplyr::select_if(is.numeric)
+summary(temp)
+describe(temp)
+
+```
+
+Write Explanation
+
+#### 2.2 Assigning the proper class type
+Ensuring each features set up correctly in R. Definition set as per instruction on problem description
+```{r re_class 1, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+temp <- df_credit
+str(df_credit)
+# Change numeric to factor
+temp$default  <- as.factor(temp$default)
+temp$credits_this_bank  <- as.factor(temp$credits_this_bank)
+# Change factor to numeric
+# none
+
+#remove ID variable
+temp <- temp %>%
+  dplyr::select(-ID)
+
+df_credit2 <- temp
+str(df_credit2)
+```
+
+#### 2.3 Checking and analyzing missing values
+Checking for any missing values and decide
+```{r missing values, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+table(df_credit2$default)
+prop.table(table(df_credit2$default))
+
+# list rows of data without any missing values 
+temp <- df_credit2[complete.cases(df_credit2),]
+table(temp$default)
+prop.table(table(temp$default))
+
+# print missing values
+summary(df_credit2)
+```
+
+Write Explanation
+
+#### 2.4 Missing value treatment
+
+Write Explanation
+
+```{r missing values treatment, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
+df_credit3 <- df_credit2
+
+```
+
+#### 2.5 Correlation Matrix
+
+```{r correlation, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+# Only choose numeric variables
+temp <- df_credit3 %>%
+  select_if(is.numeric)
+# Remove any rows with missing values
+temp <- na.omit(temp)
+
+# Compute a correlation matrix
+corr <- round(cor(temp), 1)
+
+# write to csv so easier to read result
+write.csv(corr, file = "corr.csv")
+
+# Visualize the correlation matrix
+# --------------------------------
+# method = "square" (default)
+ggcorrplot(corr)
+```
+Write Explanation
+
+#### 2.6 Target Variable in Detail
+
+```{r Target Variable, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+
+table(df_credit3$default)
+prop.table(table(df_credit3$default))
+
+pct(as.factor(df_credit3$default))
+op<-par(mfrow=c(1,2), new=TRUE)
+plot(as.numeric(df_credit3$default), ylab="Good-Bad", xlab="n", main="Good ~ Bad")
+hist(as.numeric(df_credit3$default), breaks=2, 
+     xlab="Good(1) and Bad(2)", col="blue")
+par(op)
+```
+
+Write Explanation
+
+
+#### 2.7 Feature Engineering
+
+```{r Feature Engineering, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+
+df_credit4 <- df_credit3
+
+```
+
+
+#### 2.8 Exploratory Data Analysis - Selected Numerical Variable 
+Sanity check on the data numeric
+
+##### 2.8.1 credit_amount
+
+```{r numeric credit_amount, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+outlierKD(df_credit4, credit_amount, default)
+hist_outlier(df_credit4, credit_amount, default)
+distribution_stats(df_credit4, credit_amount, default)
+
+# Create binning to check response rate
+temp <- df_credit4 %>%
+  mutate(credit_amount_bin = case_when  (credit_amount <= 1000 ~ "a. < 1000",
+                                      credit_amount <= 2000 ~ "b. < 2000",
+                                      credit_amount <= 3000 ~ "c. < 3000",
+                                      credit_amount <= 4000 ~ "d. < 4000",
+                                      credit_amount <= 5000 ~ "e. < 5000",
+                                      credit_amount <= 7500 ~ "f. < 7500",
+                                      credit_amount <= 10000 ~ "h. < 10000",
+                                      credit_amount <= 20000 ~ "i. < 20000",
+                                      TRUE ~ "j. 20000+"
+                                      ))
+response_table(temp, credit_amount_bin, default)
+target_categorical(temp$credit_amount_bin, temp$default)
+```
+
+Write Explanation
+
+
+#### 2.9 Exploratory Data Analysis - Selected Cateorical Variable 
+Sanity check on the categorical variables
+
+##### 2.9.2 credit_history
+
+```{r Target Variable PRODUCT, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+target_categorical(df_credit4$credit_history, df_credit4$default)
+
+# Create binning to check response rate
+temp <- df_credit4 %>%
+  mutate(credit_history_Bin =  case_when (
+                                          grepl("critical account/ other credits existing (not at this bank)", credit_history) ~ "critical account/ other credits existing (not at this bank)",
+                                          grepl("all credits at this bank paid back duly", credit_history) ~ "all paid back / no credits",
+                                          grepl("no credits taken/ all credits paid back duly", credit_history) ~ "all paid back / no credits",
+                                          grepl("delay in paying off in the past", credit_history) ~ "delay or paid back duly",
+                                          grepl("existing credits paid back duly till now", credit_history) ~ "delay or paid back duly",
+                                          TRUE ~ "Others"
+                                        ))
+
+response_table(temp, credit_history_Bin, default)
+```
+
+Write Explanation
+
+##### 2.10 Final Feature Engineering
+
+```{r Final Feature Engineering, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+df_credit5 <- df_credit4
+
+```
+
+#### 2.11 Variable Importance with Information Value
+
+Information Value(IV):
+IV helps to select variables by using their order of importance w.r.to information value after grouping.
+
+Note that the IV is essentially a weighted "sum" of all the individual WOE values where the weights incorporate the absolute difference between the numerator and the denominator (WOE captures the relative difference). Generally, if IV<0.05 the variable has very little predictive power and will not add any meaningful predictive power to your model.
+
+```{r WOE and IV, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+# WOE and Information Value of each variable
+# Package Information, create bins by making equal numbers of observations
+dt_info_value = iv(df_credit5, y = "default")
+dt_info_value <- dt_info_value %>%
+  mutate(predictive = case_when(info_value <= 0.02 ~ "0. useless",
+                                info_value <= 0.1 ~  "1. weak",
+                                info_value <= 0.3 ~  "2. medium",
+                                info_value <= 0.5 ~  "3. strong",
+                                info_value >  0.5 ~  "4. too strong?",
+                                TRUE ~ "5. Others??"
+                                ))
+print(dt_info_value)
+```
+
+
+#### 2.12 Variable Importance with random forest - mean decrease gini
+
+Variable Importance using mean decrease gini
+
+```{r gini, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+# list rows of data without any missing values 
+temp <- df_credit5[complete.cases(df_credit5),]
+
+# Convert all character variable into factor in one line, so can run randomforest\
+# exclude any factors more than 53 categories
+temp <- temp %>% 
+  mutate_if(is.character, as.factor)
+
+fit=randomForest(factor(default)~., data=temp)
+#(VI_F=importance(fit))
+varImpPlot(fit,type=2)
+
+```
+
+
+### 3  Modeling
+
+#### 3.1 Oversampling / Undersampling
+
+Since the dataset is imbalanced, with response rate less than 2%, the undersampling/oversampling method is required
+
+```{r Oversampling Undersampling, warning=FALSE, error=FALSE, message=FALSE, results="hide"}
+
+# Set seed for reproducibility
+set.seed(2)
+
+temp <- df_credit5
+
+temp$default<-factor(temp$default)
+
+# Using ROSE both undersampling and oversampling
+#df_over <- ovun.sample(TARGET ~ ., data = temp, method = "over",N = 20000, seed = 1)$data
+#df_under <- ovun.sample(TARGET ~ ., data = temp, method = "under", N = 250, seed = 1)$data
+#df_both <- ovun.sample(TARGET ~ ., data = temp, method = "both", p=0.2,N=500, seed = 1)$data
+
+#no oversampling / undersampling in this case
+df_model <- df_credit5
+
+table(df_model$default)
+
+
+```
+
+#### 1.3.5 Random Sampling (Train and Test)
+Random Sampling, with 70% of data used as Training and 30% as Test
+
+```{r Sampling Train Test, warning=FALSE, error=FALSE, message=FALSE, results="hide"}
+
+# This is the simple random sampling method
+#df_list = split_df(df_model, y="TARGET", ratio = 0.7, seed = 30)
+#train = df_list$train; test = df_list$test
+
+# Using stratified
+set.seed(2)
+
+temp <- df_model
+
+inTrain <- createDataPartition(
+  y = temp$default,
+  ## the outcome data are needed
+  p = .70,
+  ## The percentage of data in the
+  ## training set
+  list = FALSE
+)
+train <- temp[ inTrain,]
+test  <- temp[-inTrain,]
+```
+
+
+#### 3.3 Decision Tree
+
+Create modeling with decision tree approach
+
+###### 3.3.1 Decision Tree Model
+
+Setting used for decision tree: resampling method:repeatedcv i.e, repeated cross-validation.
+
+```{r decision tree, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+set.seed(2)
+dtree_fit <- train(default ~., data = train, method = "rpart",
+                   parms = list(split = "information"),
+                   trControl=trctrl,
+                   tuneLength = 10)
+dtree_fit
+prp(dtree_fit$finalModel, box.palette = "Reds", tweak = 1.2)
+```
+
+###### 3.3.2 Decision Tree Result and Evaluation
+
+Measuring Performance of Decision Tree to Test data set
+
+```{r decision tree evaluation, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+test_pred <- predict(dtree_fit, newdata = test, type = 'raw')
+test_pred2 <- predict(dtree_fit, newdata = test, type = 'prob')
+caret::confusionMatrix(test_pred, test$default, positive='1', mode="everything")
+ks_stat(test$default, test_pred2$`1`)
+ks_plot(test$default, test_pred2$`1`)
+InformationValue::plotROC(test$default, test_pred2$`1`)
+InformationValue::AUROC(test$default, test_pred2$`1`)
+```
+
+#### 3.4 Scorecard Matrix approach with logistic regression
+
+Create modeling with scorecard matrix approach. This approach require converting independent variables into appropriate bins, where the bins created with maximizing Information Value. Then use its WOE as part of the logistic regression model.
+
+The end result is in the form of scoring for each variable. With each significant variable will be given lower score to indicate higher likelihood of buying the product.
+
+###### 3.4.1 Score Matrix Modeling (scorecard)
+```{r Modeling Scorecard, warning=FALSE, error=FALSE, message=FALSE, results="hide"}
+# filter variable via missing rate, iv, identical value rate
+dt_s = var_filter(train, y="default")
+# woe binning ------
+bins = woebin(dt_s, y="default")
+# binning adjustment
+# # adjust breaks interactively
+# breaks_adj = woebin_adj(dt_s, "creditability", bins) 
+# # or specify breaks manually
+breaks_adj = list()
+bins_adj = woebin(dt_s, y="default", breaks_list=breaks_adj)
+# converting train and test into woe values
+train_woe = woebin_ply(train, bins_adj)
+test_woe = woebin_ply(test, bins_adj)
+# glm ------
+m1 = glm( default ~ ., family = "binomial", data = train_woe)
+# Select a formula-based model by AIC (or by LASSO)
+m_step = step(m1, direction="both", trace = FALSE)
+m2 = eval(m_step$call)
+
+```
+
+###### 3.4.2 Score Matrix Result
+```{r Modeling Scorecard result, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+# Graph explanation part of IV and WOE
+summary(train_woe)
+summary(m2)
+print(bins)
+woebin_plot(bins)
+# performance ks & roc ------
+# predicted proability
+```
+
+###### 3.4.3 Score Matrix Evaluation
+```{r Modeling Scorecard Evaluation, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+# performance ks & roc ------
+# predicted proability
+train_pred = predict(m2, train_woe, type='response')
+test_pred = predict(m2, test_woe, type='response')
+# Convert to numeric
+trainResult1 <- as.numeric(as.character(train$default))
+testResult1 <- as.numeric(as.character(test$default))
+# performance
+train_perf = perf_eva(trainResult1, train_pred, title = "train")
+test_perf = perf_eva(testResult1, test_pred, title = "test")
+# score ------
+card = scorecard(bins_adj, m2, points0 = 1000, odds0 = 1/20, pdo = 100,
+                      basepoints_eq0 = TRUE)
+print(card)
+# credit score
+train_score = scorecard_ply(train, card, print_step=0)
+test_score = scorecard_ply(test, card, print_step=0)
+# psi
+perf_psi(
+  score = list(train = train_score, test = test_score),
+  label = list(train = train$default, test = test$default),
+  x_limits = c(-5000, 5000),
+  x_tick_break = 50
+)
+
+test_pred = predict(m2, test_woe, type='response')
+
+test_pred <- as.factor(ifelse(test_pred>=0.5, 1, 0))
+
+test_pred2 = predict(m2, test_woe, type='response')
+caret::confusionMatrix(test_pred, test$default,  positive='1', mode="everything")
+ks_stat(test$default, test_pred2)
+ks_plot(test$default, test_pred2)
+InformationValue::plotROC(test$default, test_pred2)
+InformationValue::AUROC(test$default, test_pred2)
+
+```
+
+#### 3.5 Random Forest
+
+Create modeling with Random Forest approach
+
+###### 3.5.1 Random Forest Model
+
+Setting used for decision tree: resampling method:repeatedcv i.e, repeated cross-validation.
+
+```{r Random Forest, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+
+#Remove categorical predictors with more than 53 categories also change all characters to factors
+train2 <- train %>%
+  mutate_if(is.character, as.factor)
+test2 <- test %>%
+  mutate_if(is.character, as.factor)
+
+
+fit <- randomForest(default ~ .,   data=train2)
+print(fit) # view results 
+importance(fit) # importance of each predictor 
+```
+
+###### 3.5.2 Random Forest Result and Evaluation
+
+Measuring Performance of Random Forest to Test data set
+
+```{r Random Forest evaluation, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+
+test_pred <- predict(fit, newdata = test2, type = 'response')
+test_pred2 <- predict(fit, newdata = test2, type = 'prob')
+caret::confusionMatrix(test_pred, test2$default, positive='1', mode="everything")
+ks_stat(test2$default, test_pred2[,1])
+ks_plot(test2$default, test_pred2[,1])
+InformationValue::plotROC(test2$default, test_pred2[1,])
+InformationValue::AUROC(test2$default, test_pred2[1,])
+```
+
+
+#### 3.6 Caret: Selecting the best model
+
+Various Model
+
+###### 3.6.1 Part 1: CARET: Supervised Model
+
+```{r Caret Supervised1, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, results='hide'}
+set.seed(2)
+
+# https://www.r-project.org/conferences/useR-2013/Tutorials/kuhn/user_caret_2up.pdf
+# https://rpubs.com/Isaac/caret_reg
+
+# Used to fix bugs related to processing caret
+library(foreach)
+registerDoSEQ()
+
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=3, classProbs=TRUE, summaryFunction = twoClassSummary)
+
+temp <- train
+temp$default <- as.factor(ifelse(temp$default==1, 'Y', 'N'))
+
+# CART
+modelrCART <- train(default~., data=temp, method="rpart", trControl=control)
+
+# PLS
+modelPLS <- train(default~., data=temp, method="pls", trControl=control)
+
+# SVM
+modelSVM <- train(default~., data=temp, method="svmRadial", trControl=control)
+
+# Stochastic Gradient Boosting (GBM)
+modelGBM <- train(default~., data=temp, method="gbm", trControl=control)
+
+# Extreme Gradient Boosting (XGB)
+modelXGB <- train(default~., data=temp, method="xgbTree", trControl=control)
+
+# Logitboost
+modelLB <- train(default~., data=temp, method="LogitBoost", trControl=control)
+
+# Random Forest
+modelRF <- train(default~., data=temp, method="rf", trControl=control)
+
+# Decision Tree
+modelTree <- train(default~., data=temp, method="rpart", trControl=control)
+
+
+```
+
+
+###### 3.6.5 CARET: Supervised Model Evaluation
+
+```{r Caret Supervised2, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+set.seed(42)
+
+# Used to fix bugs related to processing caret
+library(foreach)
+registerDoSEQ()
+
+allResamples <- resamples(list("Extreme Gradient Boosting" = modelXGB, "Stochastic Gradient Boosting" = modelGBM, "Support Vector Machines" = modelSVM, "Partial Least Squares" = modelPLS, "CART" = modelrCART, "LogitBoost" = modelLB, "Random Forest" = modelRF, "Decision Tree" = modelTree
+                               ))
+parallelplot(allResamples)
+parallelplot(allResamples , metric = "ROC")
+
+```
+
+###### 3.6.8 Performance Evaluation on Test Data Set
+
+Measuring Performance to Test data set. Choose the algorithm first
+
+```{r decision tree evaluation, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
+
+#change algorithm used in predict
+
+# the following made for Extreme Gradient Boosting
+test_pred <- predict(modelXGB, newdata = test, type = 'raw')
+test_pred <- as.factor(ifelse(test_pred=="Y", 1, 0))
+test_pred2 <- predict(modelXGB, newdata = test, type = 'prob')
+caret::confusionMatrix(test_pred, test$default, positive='1', mode="everything")
+ks_stat(test$default, test_pred2$`Y`)
+ks_plot(test$default, test_pred2$`Y`)
+InformationValue::plotROC(test$default, test_pred2$`Y`)
+InformationValue::AUROC(test$default, test_pred2$`Y`)
+
+# Variable Importance from model
+varImp(modelXGB)
+plot(varImp(modelXGB))
+
+```
+
+### 4. Evaluation
+
+Write Explanation
+
+### 5. Implementation / Conclusion
+
+Write Explanation
