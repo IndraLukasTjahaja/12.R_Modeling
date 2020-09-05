@@ -1,5 +1,5 @@
 ---
-title: "R Markdown Modeling Template - German Credit Dataset"
+title: "R Markdown - Risk Modeling: Application Score"
 author: "Indra Lukas Tjahaja"
 date: "June 13, 2018"
 output:
@@ -11,9 +11,6 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = "/Users/indralukastjahaja/OneDrive/09 Shared Folder/Data Science di Industri Keuangan")
-# /Users/indralukastjahaja/OneDrive/09 Shared Folder/Data Science di Industri Keuangan
-# D:/Dropbox/IYKRA - Capstone Project/BCA/3. R Documentation
 ```
 
 # Supervised Learning - Classification - Factors affecting to Response
@@ -33,10 +30,10 @@ Write Explanation here
 ## Data Science Process, based on CRISP-DM 
 
 ### 0. Preparation
+
+Set working folder as necessary. For this example, we will not need to set up a working folder
 ```{r preparation}
-setwd("/Users/indralukastjahaja/OneDrive/09 Shared Folder/Data Science di Industri Keuangan")
-# /Users/indralukastjahaja/OneDrive/09 Shared Folder/Data Science di Industri Keuangan
-# D:/Dropbox/IYKRA - Capstone Project/BCA/3. R Documentation
+#setwd("")
 ```
 #### 0.1 Loading required libraries
 
@@ -93,7 +90,7 @@ Download the German data set from the following link <ftp://ftp.ics.uci.edu/pub/
 
 ```{r open file, warning=FALSE, error=FALSE, message=FALSE, results='hide'}
 # Load data from excel file
-df_credit <- read_excel("german_credit_easy.xls")
+df_credit <- read_excel("input/german_credit_easy.xls")
 
 ```
 
@@ -636,14 +633,15 @@ woebin_plot(bins)
 ```{r Modeling Scorecard Evaluation, warning=FALSE, error=FALSE, message=FALSE, echo=FALSE}
 # performance ks & roc ------
 # predicted proability
-train_pred = predict(m2, train_woe, type='response')
-test_pred = predict(m2, test_woe, type='response')
+train_pred = predict(m2, type='response', train_woe)
+test_pred = predict(m2, type='response', test_woe)
 # Convert to numeric
 trainResult1 <- as.numeric(as.character(train$default))
 testResult1 <- as.numeric(as.character(test$default))
 # performance
-train_perf = perf_eva(trainResult1, train_pred, title = "train")
-test_perf = perf_eva(testResult1, test_pred, title = "test")
+# Issue with the perf_eva code
+#train_perf = perf_eva(train$default, train_pred, title = "train")
+#test_perf = perf_eva(test$default, test_pred, title = "test")
 # score ------
 card = scorecard(bins_adj, m2, points0 = 1000, odds0 = 1/20, pdo = 100,
                       basepoints_eq0 = TRUE)
